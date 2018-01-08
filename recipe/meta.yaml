@@ -13,6 +13,8 @@ source:
     - https://cran.r-project.org/src/contrib/roxygen2_{{ version }}.tar.gz
     - https://cran.r-project.org/src/contrib/Archive/roxygen2/roxygen2_{{ version }}.tar.gz
   sha256: d22ddc05cd5308a48b8359b932e1f7f4c23fdf0c857ac8e52c42381b6bfcff76
+  patches:
+    - 0001-Use-pkgload.patch
 
 
   # patches:
@@ -20,6 +22,7 @@ source:
    # - fix.patch
 
 build:
+  merge_build_host: True  # [win]
   # If this is a new build for the same version, increment the build number.
   number: 0
 
