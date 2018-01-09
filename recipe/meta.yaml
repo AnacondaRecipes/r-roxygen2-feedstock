@@ -52,6 +52,7 @@ requirements:
     - r-stringi
     - r-stringr >=0.5
     - r-xml2
+    - r-pkgload
 
   run:
     - r-base
