@@ -1,0 +1,169 @@
+From bd0875cc547ce390363eb0792e5212d9326fd4e2 Mon Sep 17 00:00:00 2001
+From: hadley <h.wickham@gmail.com>
+Date: Thu, 17 Aug 2017 09:53:02 -0500
+Subject: [PATCH] Use pkgload
+
+Fixes #568. Fixes #595.
+---
+ DESCRIPTION                      |  3 +++
+ NEWS.md                          |  6 +++++
+ R/source.R                       | 54 ++--------------------------------------
+ man/source_package.Rd            |  5 +---
+ roxygen.Rproj                    |  1 -
+ tests/testthat/empty/DESCRIPTION |  3 ++-
+ tests/testthat/test-namespace.R  |  2 +-
+ 7 files changed, 15 insertions(+), 59 deletions(-)
+
+diff --git a/DESCRIPTION b/DESCRIPTION
+index e04495fa..6edaae11 100644
+--- a/DESCRIPTION
++++ b/DESCRIPTION
+@@ -22,6 +22,7 @@ Imports:
+     desc,
+     digest,
+     methods,
++    pkgload,
+     R6 (>= 2.1.2),
+     Rcpp (>= 0.11.0),
+     stringi,
+@@ -39,3 +40,5 @@ LinkingTo:
+ VignetteBuilder: knitr
+ Roxygen: list(markdown = TRUE)
+ RoxygenNote: 6.0.1.9000
++Remotes: 
++    r-lib/pkgload
+diff --git a/NEWS.md b/NEWS.md
+index 4bd503ab..5b5997c8 100644
+--- a/NEWS.md
++++ b/NEWS.md
+@@ -7,6 +7,12 @@
+ 
+ * Markdown code as link text is now properly rendered as code (#620, @egnha).
+ 
++* `roxygenise()` uses `pkgload::load_all()` instead of a home grown solution 
++  to simulate package loading (this is needed because roxygen2 uses run-time 
++  information to generate the documetation). This should reduce S4 related
++  problems and ensures that `devtools::document()` and `roxygenise()` always
++  have exactly the same behaviour (#568, #595).
++
+ # roxygen2 6.0.1
+ 
+ * Allowing empty lines in .Rbuildignore. Previously, empty lines caused all 
+diff --git a/R/source.R b/R/source.R
+index 24c44781..fd22dbbd 100644
+--- a/R/source.R
++++ b/R/source.R
+@@ -1,63 +1,13 @@
+ #' Source all files in a package.
+ #'
+-#' This is a simple attempt to load code in a package used by
+-#' [roxygenize]. It will work with simple packages, but fail if
+-#' there are compiled files, data files, etc. In that case, it's better to
+-#' use [devtools::document].
++#' This is a wrapper around [pkgload::load_all]
+ #'
+ #' @param path Path to a package.
+ #' @return An environment, into which all R files in the directory were
+ #'   sourced.
+ #' @keywords internal
+ source_package <- function(path) {
+-  r_path <- file.path(path, "R")
+-  if (!file.exists(r_path)) stop("Can't find R/ directory", call. = FALSE)
+-
+-  old_dir <- setwd(r_path)
+-  on.exit(setwd(old_dir))
+-
+-  env <- new.env(parent = globalenv())
+-  methods::setPackageName("roxygen_devtest", env)
+-
+-  load_pkg_dependencies(path)
+-
+-  desc <- read_pkg_description(path)
+-  paths <- package_files(path)
+-  lapply(paths, sys_source, envir = env, fileEncoding = desc$Encoding %||% "UTF-8")
+-
+-  env
+-}
+-
+-sys_source <- function(file, envir = baseenv(), fileEncoding = "UTF-8") {
+-  exprs <- parse(text = read_lines_enc(file, file_encoding = fileEncoding))
+-  for (expr in exprs) {
+-    eval(expr, envir = envir)
+-  }
+-  invisible()
+-}
+-
+-# Assume that the package has already been loaded by other means
+-# (e.g. build and reload)
+-loaded_package <- function(path) {
+-  desc <- file.path(path, "DESCRIPTION")
+-  stopifnot(file.exists(desc))
+-
+-  package <- read.dcf(desc, fields = "Package")[[1, 1]]
+-  asNamespace(package)
+-}
+-
+-
+-
+-load_pkg_dependencies <- function(path) {
+-  desc <- read_pkg_description(path)
+-
+-  pkgs <- paste(c(desc$Depends, desc$Imports), collapse = ", ")
+-  if (pkgs == "") return()
+-
+-  pkgs <- str_replace_all(pkgs, "\\(.*?\\)", "")
+-  pkgs <- str_split(pkgs, ",")[[1]]
+-  pkgs <- str_trim(pkgs)
+-  lapply(pkgs[pkgs != "R"], require, character.only = TRUE)
++  pkgload::load_all(path)$env
+ }
+ 
+ package_files <- function(path) {
+diff --git a/man/source_package.Rd b/man/source_package.Rd
+index 17a2a3d7..826abf36 100644
+--- a/man/source_package.Rd
++++ b/man/source_package.Rd
+@@ -14,9 +14,6 @@ An environment, into which all R files in the directory were
+ sourced.
+ }
+ \description{
+-This is a simple attempt to load code in a package used by
+-\link{roxygenize}. It will work with simple packages, but fail if
+-there are compiled files, data files, etc. In that case, it's better to
+-use \link[devtools:document]{devtools::document}.
++This is a wrapper around \link[pkgload:load_all]{pkgload::load_all}
+ }
+ \keyword{internal}
+diff --git a/roxygen.Rproj b/roxygen.Rproj
+index adea29cc..6009e5a6 100644
+--- a/roxygen.Rproj
++++ b/roxygen.Rproj
+@@ -3,7 +3,6 @@ Version: 1.0
+ RestoreWorkspace: Default
+ SaveWorkspace: Default
+ AlwaysSaveHistory: Default
+-QuitChildProcessesOnExit: Default
+ 
+ EnableCodeIndexing: Yes
+ UseSpacesForTab: Yes
+diff --git a/tests/testthat/empty/DESCRIPTION b/tests/testthat/empty/DESCRIPTION
+index 4712a60d..62b387e9 100644
+--- a/tests/testthat/empty/DESCRIPTION
++++ b/tests/testthat/empty/DESCRIPTION
+@@ -1 +1,2 @@
+-Name: empty
++Package: empty
++Version: 1.0.0
+diff --git a/tests/testthat/test-namespace.R b/tests/testthat/test-namespace.R
+index 55b0ebc9..5d18343a 100644
+--- a/tests/testthat/test-namespace.R
++++ b/tests/testthat/test-namespace.R
+@@ -182,7 +182,7 @@ test_that("useDynLib doesn't quote if comma present", {
+ })
+ 
+ test_that("empty NAMESPACE generates zero-length vector", {
+-  base_path <- normalizePath("empty")
++  base_path <- test_path("empty")
+   parsed <- parse_package(base_path, source_package, registry = list())
+ 
+   results <- roclet_process(namespace_roclet(), parsed, base_path)
